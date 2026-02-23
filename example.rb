@@ -21,16 +21,17 @@ puts
 
 # Example 3: Using Benchmark.bm
 puts "Example 3: Benchmark.bm"
-Benchmark.bm(15) do |x|
-  x.report("multiplication:") { 1000000.times { |i| i * 2 } }
-  x.report("addition:") { 1000000.times { |i| i + 2 } }
-  x.report("division:") { 1000000.times { |i| i / 2 } }
+u = Benchmark.bm(15) do |x|
+  x.report("multiplication") { 1000000.times { |i| i * 2 } }
+  x.report("addition") { 1000000.times { |i| i + 2 } }
+  x.report("division") { 1000000.times { |i| i / 2 } }
 end
+p u
 puts
 
 # Example 4: Using Benchmark.bmbm (rehearsal + real run)
 puts "Example 4: Benchmark.bmbm"
 Benchmark.bmbm(15) do |x|
-  x.report("multiplication:") { 500000.times { |i| i * 2 } }
-  x.report("addition:") { 500000.times { |i| i + 2 } }
+  x.report("multiplication") { 500000.times { |i| i * 2 } }
+  x.report("addition") { 500000.times { |i| i + 2 } }
 end

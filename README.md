@@ -13,7 +13,7 @@ Add the following line to your `build_config.rb`:
 ```ruby
 MRuby::Build.new do |conf|
   # ... (other configurations)
-  
+
   conf.gem github: 'Asmod4n/mruby-benchmark'
 end
 ```
@@ -99,7 +99,7 @@ See [example.rb](example.rb) for a complete example.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+Apache-2.0 License - see [LICENSE](LICENSE) file for details.
 
 ## Author
 

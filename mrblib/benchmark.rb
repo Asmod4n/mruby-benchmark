@@ -1,119 +1,251 @@
 module Benchmark
-  # Benchmark::Tms class holds timing results
-  class Tms
-    attr_reader :utime, :stime, :cutime, :cstime, :real, :label
+  VERSION = "0.5.0"
 
-    def initialize(utime = 0.0, stime = 0.0, cutime = 0.0, cstime = 0.0, real = 0.0, label = "")
-      @utime = utime
-      @stime = stime
+  CAPTION = "      user     system      total        real\n"
+  FORMAT  = "%10.6f %10.6f %10.6f (%10.6f)\n"
+
+  # -------------------------------------------------------------------
+  # Tms
+  # -------------------------------------------------------------------
+  class Tms
+    attr_reader :utime, :stime, :cutime, :cstime, :real, :total, :label
+
+    def initialize(utime = 0.0, stime = 0.0, cutime = 0.0, cstime = 0.0, real = 0.0, label = nil)
+      @utime  = utime
+      @stime  = stime
       @cutime = cutime
       @cstime = cstime
-      @real = real
-      @label = label
+      @real   = real
+      @label  = label.to_s
+      @total  = @utime + @stime + @cutime + @cstime
     end
 
-    def total
-      @utime + @stime + @cutime + @cstime
-    end
-
-    def to_s
-      format("%s %10.6f %10.6f %10.6f (%10.6f)\n",
-             @label.ljust(20),
-             @utime,
-             @stime,
-             total,
-             @real)
-    end
+    # arithmetic -------------------------------------------------------
 
     def +(other)
-      Tms.new(@utime + other.utime,
-              @stime + other.stime,
-              @cutime + other.cutime,
-              @cstime + other.cstime,
-              @real + other.real)
+      Tms.new(
+        @utime  + other.utime,
+        @stime  + other.stime,
+        @cutime + other.cutime,
+        @cstime + other.cstime,
+        @real   + other.real,
+        @label
+      )
     end
 
     def -(other)
-      Tms.new(@utime - other.utime,
-              @stime - other.stime,
-              @cutime - other.cutime,
-              @cstime - other.cstime,
-              @real - other.real)
+      Tms.new(
+        @utime  - other.utime,
+        @stime  - other.stime,
+        @cutime - other.cutime,
+        @cstime - other.cstime,
+        @real   - other.real,
+        @label
+      )
     end
+
+    def *(x)
+      Tms.new(
+        @utime  * x,
+        @stime  * x,
+        @cutime * x,
+        @cstime * x,
+        @real   * x,
+        @label
+      )
+    end
+
+    def /(x)
+      Tms.new(
+        @utime  / x,
+        @stime  / x,
+        @cutime / x,
+        @cstime / x,
+        @real   / x,
+        @label
+      )
+    end
+
+    # formatting -------------------------------------------------------
+
+    def format(fmt = nil, *args)
+      # default: CRuby-style line
+      if fmt.nil?
+        return FORMAT % [@utime, @stime, @total, @real]
+      end
+
+      # special case used by bmbm: "total: %tsec"
+      if fmt == "total: %tsec"
+        return "total: %0.6fsec" % @total
+      end
+
+      # generic: use provided FORMAT-like string (no %u/%y/%t/%r extensions)
+      # we assume fmt is a plain sprintf format for 4 floats
+      if args.empty?
+        return fmt % [@utime, @stime, @total, @real]
+      else
+        return fmt % args
+      end
+    end
+
+    def to_s
+      format
+    end
+
+    def inspect
+      # CRuby-like object id (MRuby object_id is different)
+      hex_id = (self.object_id << 1).to_s(16)
+
+      parts = []
+      instance_variables.each do |ivar|
+        val = instance_variable_get(ivar)
+        parts << "#{ivar}=#{val.inspect}"
+      end
+
+      "#<#{self.class}:0x#{hex_id} #{parts.join(", ")}>"
+    end
+
+
   end
 
-  # Report class for formatting benchmark output
-  class Report
-    attr_reader :list
+  # -------------------------------------------------------------------
+  # Job (for bmbm)
+  # -------------------------------------------------------------------
+  class Job
+    attr_reader :list, :width
 
-    def initialize(width = 0)
+    def initialize(width)
       @width = width
-      @list = []
+      @list  = []
     end
 
     def item(label = "", &blk)
-      print label.ljust(@width)
-      res = Benchmark.measure(&blk)
-      print res
-      @list << res
+      raise ArgumentError, "no block" unless block_given?
+      label = label.to_s
+      w = label.length
+      @width = w if @width < w
+      @list << [label, blk]
+      self
     end
 
     alias report item
   end
 
-  module_function
+  # -------------------------------------------------------------------
+  # Report (for bm/benchmark)
+  # -------------------------------------------------------------------
+  class Report
+    attr_reader :width, :format, :list
 
-  # Returns elapsed real time for executing the given block
-  def realtime(&blk)
-    chrono = Chrono.new
-    blk.call
-    chrono.elapsed
+    def initialize(width = 0, format = nil)
+      @width  = width
+      @format = format
+      @list   = []
+    end
+
+    def item(label = "", *fmt, &blk)
+      raise ArgumentError, "no block" unless block_given?
+      label = label.to_s
+      w = label.length
+      @width = w if @width < w
+      res = Benchmark.measure(label, &blk)
+      @list << res
+      res
+    end
+
+    alias report item
   end
 
-  # Measures the execution time of the given block
-  def measure(label = "", &blk)
-    cpu_start = CPUUsage.new
-    chrono = Chrono.new
-    
-    blk.call
-    
-    elapsed = chrono.elapsed
-    cpu_end = CPUUsage.new
-    
-    utime = cpu_end.user - cpu_start.user
-    stime = cpu_end.system - cpu_start.system
-    
-    Tms.new(utime, stime, 0.0, 0.0, elapsed, label)
-  end
-
-  # Runs multiple benchmarks with formatted output
-  def bm(label_width = 0, *labels, &blk)
+  # -------------------------------------------------------------------
+  # Core API
+  # -------------------------------------------------------------------
+  def benchmark(caption = "", label_width = nil, format = nil, *labels)
     sync = $stdout.sync
     $stdout.sync = true
-    
-    puts "%s %10s %10s %10s %10s" % ["", "user", "system", "total", "real"]
-    
-    report = Report.new(label_width)
-    blk.call(report)
-    
-    $stdout.sync = sync
+    label_width ||= 0
+    label_width += 1
+    report = Report.new(label_width, format)
+    results = yield(report)
+
+    print " " * report.width + caption unless caption.empty?
+    report.list.each do |i|
+      print i.label.to_s.ljust(report.width)
+      print i.format # default line
+    end
+
+    if Array === results
+      results.grep(Tms).each do |t|
+        lab = (labels.shift || t.label || "").to_s
+        print lab.ljust(label_width)
+        print t.format
+      end
+    end
+
     report.list
+  ensure
+    $stdout.sync = sync unless sync.nil?
   end
 
-  # Runs benchmarks twice - rehearsal and real
-  def bmbm(width = 0, &blk)
+  def bm(label_width = 0, *labels, &blk)
+    benchmark(CAPTION, label_width, FORMAT, *labels, &blk)
+  end
+
+  def bmbm(width = 0)
+    job = Job.new(width)
+    yield(job)
+    width = job.width + 1
     sync = $stdout.sync
     $stdout.sync = true
-    
-    puts "Rehearsal " + "-" * 51
-    bm(width, &blk)
-    
-    puts "-" * 60
-    puts
-    
-    results = bm(width, &blk)
-    
-    $stdout.sync = sync
-    results
+
+    # rehearsal
+    puts 'Rehearsal '.ljust(width + CAPTION.length, '-')
+    ets = job.list.inject(Tms.new) do |sum, (label, item)|
+      print label.ljust(width)
+      res = Benchmark.measure(&item)
+      print res.format
+      sum + res
+    end.format("total: %tsec")
+    print " #{ets}\n\n".rjust(width + CAPTION.length + 2, '-')
+
+    # take
+    print ' ' * width + CAPTION
+    job.list.map do |label, item|
+      print label.ljust(width)
+      res = Benchmark.measure(label, &item)
+      print res
+      res
+    end
+  ensure
+    $stdout.sync = sync unless sync.nil?
   end
+
+  # -------------------------------------------------------------------
+  # Timing backend (MRuby)
+  # -------------------------------------------------------------------
+  def measure(label = "")
+    cpu_start = CPUUsage.snapshot
+    timer = Chrono::Timer.new
+    yield
+    real = timer.elapsed
+    cpu_end = CPUUsage.snapshot
+
+    utime  = cpu_end[:user_time]   - cpu_start[:user_time]
+    stime  = cpu_end[:system_time] - cpu_start[:system_time]
+    cutime  = cpu_end[:child_user_time]   - cpu_start[:child_user_time]
+    cstime  = cpu_end[:child_system_time] - cpu_start[:child_system_time]
+
+    Tms.new(utime, stime, cutime, cstime, real, label)
+  end
+
+  def realtime
+    timer = Chrono::Timer.new
+    yield
+    timer.elapsed
+  end
+
+  def ms
+    realtime { yield } * 1000.0
+  end
+
+  module_function :benchmark, :measure, :realtime, :ms, :bm, :bmbm
 end
