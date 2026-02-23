@@ -111,8 +111,9 @@ module Benchmark
     puts "-" * 60
     puts
     
-    bm(width, &blk)
+    results = bm(width, &blk)
     
     $stdout.sync = sync
+    results
   end
 end

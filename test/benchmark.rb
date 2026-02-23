@@ -81,3 +81,15 @@ assert('Benchmark.bm') do
   assert_kind_of Benchmark::Tms, results[0]
   assert_kind_of Benchmark::Tms, results[1]
 end
+
+assert('Benchmark.bmbm') do
+  results = Benchmark.bmbm(10) do |x|
+    x.report("test1") { sleep 0.05 }
+    x.report("test2") { sleep 0.05 }
+  end
+  
+  assert_kind_of Array, results
+  assert_equal 2, results.length
+  assert_kind_of Benchmark::Tms, results[0]
+  assert_kind_of Benchmark::Tms, results[1]
+end
